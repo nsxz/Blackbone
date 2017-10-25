@@ -1,5 +1,5 @@
 #pragma once
-#include <wdm.h>
+#include <ntifs.h>
 
 /// <summary>
 /// Allocate new Unicode string from Paged pool
@@ -60,6 +60,20 @@ NTSTATUS BBFileExists( IN PUNICODE_STRING path );
 /// <param name="ppFound">Found location</param>
 /// <returns>Status code</returns>
 NTSTATUS BBSearchPattern( IN PCUCHAR pattern, IN UCHAR wildcard, IN ULONG_PTR len, IN const VOID* base, IN ULONG_PTR size, OUT PVOID* ppFound );
+
+/// <summary>
+/// Setup image security cookie
+/// </summary>
+/// <param name="imageBase">Image base</param>
+/// <returns>Status code</returns>
+NTSTATUS BBCreateCookie( IN PVOID imageBase );
+
+/// <summary>
+/// Check if process is terminating
+/// </summary>
+/// <param name="imageBase">Process</param>
+/// <returns>If TRUE - terminating</returns>
+BOOLEAN BBCheckProcessTermination( PEPROCESS pProcess );
 
 //
 // Machine code generation routines

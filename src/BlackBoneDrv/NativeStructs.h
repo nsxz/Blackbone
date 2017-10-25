@@ -52,6 +52,72 @@ typedef union _KEXECUTE_OPTIONS
     UCHAR ExecuteOptions;
 } KEXECUTE_OPTIONS, *PKEXECUTE_OPTIONS;
 
+typedef struct _EPROCESS_FLAGS2
+{
+    unsigned int JobNotReallyActive : 1;
+    unsigned int AccountingFolded : 1;
+    unsigned int NewProcessReported : 1;
+    unsigned int ExitProcessReported : 1;
+    unsigned int ReportCommitChanges : 1;
+    unsigned int LastReportMemory : 1;
+    unsigned int ForceWakeCharge : 1;
+    unsigned int CrossSessionCreate : 1;
+    unsigned int NeedsHandleRundown : 1;
+    unsigned int RefTraceEnabled : 1;
+    unsigned int DisableDynamicCode : 1;
+    unsigned int EmptyJobEvaluated : 1;
+    unsigned int DefaultPagePriority : 3;
+    unsigned int PrimaryTokenFrozen : 1;
+    unsigned int ProcessVerifierTarget : 1;
+    unsigned int StackRandomizationDisabled : 1;
+    unsigned int AffinityPermanent : 1;
+    unsigned int AffinityUpdateEnable : 1;
+    unsigned int PropagateNode : 1;
+    unsigned int ExplicitAffinity : 1;
+    unsigned int ProcessExecutionState : 2;
+    unsigned int DisallowStrippedImages : 1;
+    unsigned int HighEntropyASLREnabled : 1;
+    unsigned int ExtensionPointDisable : 1;
+    unsigned int ForceRelocateImages : 1;
+    unsigned int ProcessStateChangeRequest : 2;
+    unsigned int ProcessStateChangeInProgress : 1;
+    unsigned int DisallowWin32kSystemCalls : 1;
+} EPROCESS_FLAGS2, *PEPROCESS_FLAGS2;
+
+typedef struct _MITIGATION_FLAGS
+{
+    unsigned int ControlFlowGuardEnabled : 1;
+    unsigned int ControlFlowGuardExportSuppressionEnabled : 1;
+    unsigned int ControlFlowGuardStrict : 1;
+    unsigned int DisallowStrippedImages : 1;
+    unsigned int ForceRelocateImages : 1;
+    unsigned int HighEntropyASLREnabled : 1;
+    unsigned int StackRandomizationDisabled : 1;
+    unsigned int ExtensionPointDisable : 1;
+    unsigned int DisableDynamicCode : 1;
+    unsigned int DisableDynamicCodeAllowOptOut : 1;
+    unsigned int DisableDynamicCodeAllowRemoteDowngrade : 1;
+    unsigned int AuditDisableDynamicCode : 1;
+    unsigned int DisallowWin32kSystemCalls : 1;
+    unsigned int AuditDisallowWin32kSystemCalls : 1;
+    unsigned int EnableFilteredWin32kAPIs : 1;
+    unsigned int AuditFilteredWin32kAPIs : 1;
+    unsigned int DisableNonSystemFonts : 1;
+    unsigned int AuditNonSystemFontLoading : 1;
+    unsigned int PreferSystem32Images : 1;
+    unsigned int ProhibitRemoteImageMap : 1;
+    unsigned int AuditProhibitRemoteImageMap : 1;
+    unsigned int ProhibitLowILImageMap : 1;
+    unsigned int AuditProhibitLowILImageMap : 1;
+    unsigned int SignatureMitigationOptIn : 1;
+    unsigned int AuditBlockNonMicrosoftBinaries : 1;
+    unsigned int AuditBlockNonMicrosoftBinariesAllowStore : 1;
+    unsigned int LoaderIntegrityContinuityEnabled : 1;
+    unsigned int AuditLoaderIntegrityContinuity : 1;
+    unsigned int EnableModuleTamperingProtection : 1;
+    unsigned int EnableModuleTamperingProtectionNoInherit : 1;
+} MITIGATION_FLAGS, *PMITIGATION_FLAGS;
+
 typedef union _EXHANDLE
 {
     struct
@@ -142,6 +208,36 @@ typedef struct _OBJECT_HEADER // Size=56
     void * SecurityDescriptor; // Size=8 Offset=40
     struct _QUAD Body; // Size=8 Offset=48
 } OBJECT_HEADER, *POBJECT_HEADER;
+
+typedef union _EX_FAST_REF // Size=8
+{
+    void * Object;
+    struct
+    {
+        unsigned __int64 RefCnt : 4; 
+    };
+    unsigned __int64 Value;
+} EX_FAST_REF, *PEX_FAST_REF;
+
+typedef struct _CONTROL_AREA // Size=120
+{
+    struct _SEGMENT * Segment;
+    struct _LIST_ENTRY ListHead;
+    unsigned __int64 NumberOfSectionReferences;
+    unsigned __int64 NumberOfPfnReferences; 
+    unsigned __int64 NumberOfMappedViews;
+    unsigned __int64 NumberOfUserReferences;
+    unsigned long f1; 
+    unsigned long f2;
+    EX_FAST_REF FilePointer;
+    // Other fields
+} CONTROL_AREA, *PCONTROL_AREA;
+
+typedef struct _SUBSECTION // Size=56
+{
+    PCONTROL_AREA ControlArea;
+    // Other fields
+} SUBSECTION, *PSUBSECTION;
 
 typedef struct _MEMORY_BASIC_INFORMATION_EX
 {
@@ -284,7 +380,7 @@ typedef struct _RTL_PROCESS_MODULE_INFORMATION
     USHORT InitOrderIndex;
     USHORT LoadCount;
     USHORT OffsetToFileName;
-    UCHAR  FullPathName[256];
+    UCHAR  FullPathName[MAXIMUM_FILENAME_LENGTH];
 } RTL_PROCESS_MODULE_INFORMATION, *PRTL_PROCESS_MODULE_INFORMATION;
 
 typedef struct _RTL_PROCESS_MODULES
@@ -368,7 +464,7 @@ typedef struct _PEB
     PVOID AtlThunkSListPtr;
     PVOID IFEOKey;
     PVOID CrossProcessFlags;
-    PVOID UserSharedInfoPtr;
+    PVOID KernelCallbackTable;
     ULONG SystemReserved;
     ULONG AtlThunkSListPtr32;
     PVOID ApiSetMap;
@@ -440,7 +536,6 @@ typedef union _WOW64_APC_CONTEXT
 
 } WOW64_APC_CONTEXT, *PWOW64_APC_CONTEXT;
 
-
 typedef struct _NON_PAGED_DEBUG_INFO
 {
     USHORT      Signature;
@@ -476,39 +571,3 @@ typedef struct _KLDR_DATA_TABLE_ENTRY
     PVOID LoadedImports;
     PVOID PatchInformation;
 } KLDR_DATA_TABLE_ENTRY, *PKLDR_DATA_TABLE_ENTRY;
-
-
-#define ACTCTX_FLAG_PROCESSOR_ARCHITECTURE_VALID    (0x00000001)
-#define ACTCTX_FLAG_LANGID_VALID                    (0x00000002)
-#define ACTCTX_FLAG_ASSEMBLY_DIRECTORY_VALID        (0x00000004)
-#define ACTCTX_FLAG_RESOURCE_NAME_VALID             (0x00000008)
-#define ACTCTX_FLAG_SET_PROCESS_DEFAULT             (0x00000010)
-#define ACTCTX_FLAG_APPLICATION_NAME_VALID          (0x00000020)
-#define ACTCTX_FLAG_SOURCE_IS_ASSEMBLYREF           (0x00000040)
-#define ACTCTX_FLAG_HMODULE_VALID                   (0x00000080)
-
-typedef struct tagACTCTXW 
-{
-    ULONG  cbSize;
-    ULONG  dwFlags;
-    PWCH   lpSource;
-    USHORT wProcessorArchitecture;
-    USHORT wLangId;
-    PWCH   lpAssemblyDirectory;
-    PWCH   lpResourceName;
-    PWCH   lpApplicationName;
-    PVOID  hModule;
-} ACTCTXW, *PACTCTXW;
-
-typedef struct tagACTCTXW32
-{
-    ULONG  cbSize;
-    ULONG  dwFlags;
-    ULONG  lpSource;
-    USHORT wProcessorArchitecture;
-    USHORT wLangId;
-    ULONG  lpAssemblyDirectory;
-    ULONG  lpResourceName;
-    ULONG  lpApplicationName;
-    ULONG  hModule;
-} ACTCTXW32, *PACTCTXW32;

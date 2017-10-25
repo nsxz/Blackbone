@@ -3,13 +3,14 @@
 #include <cstdio>
 #include <cstdlib>
 
+#pragma warning(push)
 #pragma warning(disable : 4091)
 #include <DbgHelp.h>
-#pragma warning(default : 4091)
+#pragma warning(pop)
 
 namespace blackbone
 {
-#ifndef BLACBONE_NO_TRACE
+#ifndef BLACKBONE_NO_TRACE
 
 inline void DoTraceV( const char* fmt, va_list va_args )
 {
@@ -44,10 +45,10 @@ inline void DoTrace( const Ch* fmt, ... )
     va_end( va_args );
 }
 
-#define BLACBONE_TRACE(fmt, ...) DoTrace(fmt, ##__VA_ARGS__)
+#define BLACKBONE_TRACE(fmt, ...) DoTrace(fmt, ##__VA_ARGS__)
 
 #else
-#define BLACBONE_TRACE(...)
+#define BLACKBONE_TRACE(...)
 #endif
 
 }

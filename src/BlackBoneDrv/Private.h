@@ -141,6 +141,9 @@ typedef enum _WinVer
     WINVER_8     = 0x0620,
     WINVER_81    = 0x0630,
     WINVER_10    = 0x0A00,
+    WINVER_10_AU = 0x0A01,
+    WINVER_10_CU = 0x0A02,
+    WINVER_10_FC = 0x0A03,
 } WinVer;
 
 extern PLIST_ENTRY PsLoadedModuleList;
@@ -156,6 +159,7 @@ typedef struct _DYNAMIC_DATA
 
     ULONG KExecOpt;         // KPROCESS::ExecuteOptions 
     ULONG Protection;       // EPROCESS::Protection
+    ULONG EProcessFlags2;   // EPROCESS::Flags2
     ULONG ObjTable;         // EPROCESS::ObjectTable
     ULONG VadRoot;          // EPROCESS::VadRoot
     ULONG NtProtectIndex;   // NtProtectVirtualMemory SSDT index
@@ -164,7 +168,10 @@ typedef struct _DYNAMIC_DATA
     ULONG PrevMode;         // KTHREAD::PreviousMode
     ULONG ExitStatus;       // ETHREAD::ExitStatus
     ULONG MiAllocPage;      // MiAllocateDriverPage offset
-    ULONG ExRemoveTable;    // ExRemoveHandleTable offset
+    ULONG ExRemoveTable;    // Ex(p)RemoveHandleTable offset
+
+    ULONG_PTR DYN_PDE_BASE; // Win10 AU+ relocated PDE base VA
+    ULONG_PTR DYN_PTE_BASE; // Win10 AU+ relocated PTE base VA
 } DYNAMIC_DATA, *PDYNAMIC_DATA;
 
 
@@ -213,8 +220,8 @@ NTSTATUS
 NTAPI
 ZwProtectVirtualMemory(
     IN HANDLE ProcessHandle,
-    IN PVOID* BaseAddress,
-    IN SIZE_T* NumberOfBytesToProtect,
+    IN OUT PVOID* BaseAddress,
+    IN OUT SIZE_T* NumberOfBytesToProtect,
     IN ULONG NewAccessProtection,
     OUT PULONG OldAccessProtection 
     );
@@ -226,8 +233,8 @@ NTSTATUS
 NTAPI
 ZwProtectVirtualMemory( 
     IN HANDLE ProcessHandle,
-    IN PVOID* BaseAddress,
-    IN SIZE_T* NumberOfBytesToProtect,
+    IN OUT PVOID* BaseAddress,
+    IN OUT SIZE_T* NumberOfBytesToProtect,
     IN ULONG NewAccessProtection,
     OUT PULONG OldAccessProtection
     );

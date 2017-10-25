@@ -78,3 +78,10 @@ GeneratedFiles*/
 *.ggpk
 *.idb
 *.opendb
+*.db
+*.sqlite
+/.vs
+*.db-shm
+*.db-wal
+*.json
+*.json

@@ -12,15 +12,7 @@ namespace blackbone
 
 DriverControl::DriverControl()
 {
-    HMODULE ntdll = GetModuleHandleW( L"ntdll.dll" );
-
-    DynImport::load( "NtLoadDriver", ntdll );
-    DynImport::load( "NtUnloadDriver", ntdll );
-    DynImport::load( "RtlDosPathNameToNtPathName_U", ntdll );
-    DynImport::load( "RtlInitUnicodeString", ntdll );
-    DynImport::load( "RtlFreeUnicodeString", ntdll );
 }
-
 
 DriverControl::~DriverControl()
 {
@@ -41,7 +33,7 @@ DriverControl& DriverControl::Instance()
 NTSTATUS DriverControl::EnsureLoaded( const std::wstring& path /*= L"" */ )
 {
     // Already open
-    if (_hDriver != INVALID_HANDLE_VALUE)
+    if (_hDriver)
         return STATUS_SUCCESS;
 
     // Try to open handle to existing driver
@@ -52,7 +44,7 @@ NTSTATUS DriverControl::EnsureLoaded( const std::wstring& path /*= L"" */ )
         NULL, OPEN_EXISTING, 0, NULL
         );
 
-    if (_hDriver != INVALID_HANDLE_VALUE)
+    if (_hDriver)
         return _loadStatus = STATUS_SUCCESS;
 
     // Start new instance
@@ -66,8 +58,6 @@ NTSTATUS DriverControl::EnsureLoaded( const std::wstring& path /*= L"" */ )
 /// <returns>Status code</returns>
 NTSTATUS DriverControl::Reload( std::wstring path /*= L"" */ )
 {
-    NTSTATUS status = STATUS_SUCCESS;
-
     Unload();
 
     // Use default path
@@ -76,24 +66,24 @@ NTSTATUS DriverControl::Reload( std::wstring path /*= L"" */ )
         const wchar_t* filename = nullptr;
 
         if (IsWindows10OrGreater())
-            filename = L"BlackBoneDrv10.sys";
+            filename = BLACKBONE_FILE_NAME_10;
         else if (IsWindows8Point1OrGreater())
-            filename = L"BlackBoneDrv81.sys";
+            filename = BLACKBONE_FILE_NAME_81;
         else if (IsWindows8OrGreater())
-            filename = L"BlackBoneDrv8.sys";
+            filename = BLACKBONE_FILE_NAME_8;
         else if (IsWindows7OrGreater())
-            filename = L"BlackBoneDrv7.sys";
+            filename = BLACKBONE_FILE_NAME_7;
         else
-            filename = L"BlackBoneDrv.sys";
+            filename = BLACKBONE_FILE_NAME;
 
         path = Utils::GetExeDirectory() + L"\\" + filename;
     }
 
-    status = _loadStatus = LoadDriver( DRIVER_SVC_NAME, path );
-    if (!NT_SUCCESS( status ))
+    _loadStatus = LoadDriver( DRIVER_SVC_NAME, path );
+    if (!NT_SUCCESS( _loadStatus ))
     {
-        BLACBONE_TRACE( L"Failed to load driver %ls. Status 0x%X", path.c_str(), status );
-        return LastNtStatus( status );
+        BLACKBONE_TRACE( L"Failed to load driver %ls. Status 0x%X", path.c_str(), _loadStatus );
+        return _loadStatus;
     }
 
     _hDriver = CreateFileW( 
@@ -103,14 +93,14 @@ NTSTATUS DriverControl::Reload( std::wstring path /*= L"" */ )
         NULL, OPEN_EXISTING, 0, NULL
         );
 
-    if (_hDriver == INVALID_HANDLE_VALUE)
+    if (!_hDriver)
     {
-        status = LastNtStatus();
-        BLACBONE_TRACE( L"Failed to open driver handle. Status 0x%X", status );
-        return status;
+        _loadStatus = LastNtStatus();
+        BLACKBONE_TRACE( L"Failed to open driver handle. Status 0x%X", _loadStatus );
+        return _loadStatus;
     }
 
-    return status;
+    return _loadStatus;
 }
 
 /// <summary>
@@ -119,12 +109,7 @@ NTSTATUS DriverControl::Reload( std::wstring path /*= L"" */ )
 /// <returns>Status code</returns>
 NTSTATUS DriverControl::Unload()
 {
-    if (_hDriver != INVALID_HANDLE_VALUE)
-    {
-        CloseHandle( _hDriver );
-        _hDriver = INVALID_HANDLE_VALUE;
-    }
-
+    _hDriver.reset();
     return UnloadDriver( DRIVER_SVC_NAME );
 }
 
@@ -285,12 +270,19 @@ NTSTATUS DriverControl::DisableDEP( DWORD pid )
 /// Change process protection flag
 /// </summary>
 /// <param name="pid">Target PID</param>
-/// <param name="enable">true to enable protection, false to disable</param>
+/// <param name="protection">Process protection policy</param>
+/// <param name="dynamicCode">Prohibit dynamic code</param>
+/// <param name="binarySignature">Prohibit loading non-microsoft dlls</param>
 /// <returns>Status code</returns>
-NTSTATUS DriverControl::ProtectProcess( DWORD pid, bool enable )
+NTSTATUS DriverControl::ProtectProcess(
+    DWORD pid,
+    PolicyOpt protection,
+    PolicyOpt dynamicCode /*= Policy_Keep*/,
+    PolicyOpt binarySignature /*= Policy_Keep*/
+    )
 {
     DWORD bytes = 0;
-    SET_PROC_PROTECTION setProt = { pid, enable };
+    SET_PROC_PROTECTION setProt = { pid, protection, dynamicCode, binarySignature };
 
     // Not loaded
     if (_hDriver == INVALID_HANDLE_VALUE)
@@ -697,6 +689,56 @@ NTSTATUS DriverControl::UnlinkHandleTable( DWORD pid )
     if (!DeviceIoControl( _hDriver, IOCTL_BLACKBONE_UNLINK_HTABLE, &unlink, sizeof( unlink ), nullptr, 0, &bytes, NULL ))
         return LastNtStatus();
 
+    return STATUS_SUCCESS;
+}
+
+/// <summary>
+///  Enumerate committed, accessible, non-guarded memory regions
+/// </summary>
+/// <param name="pid">Target process ID</param>
+/// <param name="regions">Found regions</param>
+/// <returns>Status code</returns>
+NTSTATUS DriverControl::EnumMemoryRegions( DWORD pid, std::vector<MEMORY_BASIC_INFORMATION64>& regions )
+{
+    // Not loaded
+    if (_hDriver == INVALID_HANDLE_VALUE)
+    {
+        return STATUS_DEVICE_DOES_NOT_EXIST;
+    }
+
+    DWORD bytes = 0;
+    ENUM_REGIONS data = { 0 };
+    DWORD size = sizeof( ENUM_REGIONS_RESULT );
+    auto result = reinterpret_cast<PENUM_REGIONS_RESULT>(malloc( size ));
+
+    data.pid = pid;
+    result->count = 0;
+
+    DeviceIoControl( _hDriver, IOCTL_BLACKBONE_ENUM_REGIONS, &data, sizeof( data ), result, size, &bytes, NULL );
+
+    result->count += 100;
+    size = static_cast<DWORD>(result->count * sizeof( result->regions[0] ) + sizeof( result->count ));
+    result = reinterpret_cast<PENUM_REGIONS_RESULT>(realloc( result, size ));
+
+    if (!DeviceIoControl( _hDriver, IOCTL_BLACKBONE_ENUM_REGIONS, &data, sizeof( data ), result, size, &bytes, NULL ))
+    {
+        free( result );
+        return LastNtStatus();
+    }
+
+    regions.resize( static_cast<size_t>(result->count) );
+    for (uint32_t i = 0; i < result->count; i++)
+    {
+        regions[i].AllocationBase = result->regions[i].AllocationBase;
+        regions[i].AllocationProtect = result->regions[i].AllocationProtect;
+        regions[i].BaseAddress = result->regions[i].BaseAddress;
+        regions[i].Protect = result->regions[i].Protect;
+        regions[i].RegionSize = result->regions[i].RegionSize;
+        regions[i].State = result->regions[i].State;
+        regions[i].Type = result->regions[i].Type;
+    }
+    
+    free( result );
     return STATUS_SUCCESS;
 }
 
